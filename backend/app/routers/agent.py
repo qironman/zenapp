@@ -59,6 +59,8 @@ async def get_suggestion(req: AgentSuggestRequest, user: str = Depends(get_curre
             req.selectionEnd,
             req.prompt,
             req.provider,
+            req.bookSlug,
+            req.chapterSlug,
         ),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},

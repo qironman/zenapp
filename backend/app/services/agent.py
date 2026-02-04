@@ -59,6 +59,8 @@ async def get_edit_suggestion(
     selection_end: int,
     prompt: str,
     provider: str = "anthropic",
+    book_slug: str = "",
+    chapter_slug: str = "",
 ) -> AsyncIterator[str]:
     """
     Stream initial edit suggestion using Copilot CLI.
@@ -68,10 +70,13 @@ async def get_edit_suggestion(
     selected_text = content[selection_start:selection_end]
     session_id = str(uuid.uuid4())
     
+    # Extract context: chapter title and current section
+    context = _extract_context(content, selection_start, selection_end)
+    
     replacement = ""
     
     # Always use Copilot CLI (no API keys needed)
-    async for event, text in _stream_initial_edit(selected_text, prompt, provider):
+    async for event, text in _stream_initial_edit(selected_text, prompt, provider, context):
         if text:
             replacement = text
         yield event
@@ -144,46 +149,117 @@ def apply_edit(session_id: str) -> Optional[str]:
     return new_content
 
 
+def _extract_context(content: str, selection_start: int, selection_end: int) -> dict:
+    """Extract contextual information around the selection."""
+    lines = content[:selection_start].split('\n')
+    
+    chapter_title = ""
+    section_heading = ""
+    
+    # Find chapter title (first # heading)
+    for line in content.split('\n'):
+        if line.startswith('# '):
+            chapter_title = line[2:].strip()
+            break
+    
+    # Find current section (nearest ## or ### heading before selection)
+    for line in reversed(lines):
+        if line.startswith('## ') or line.startswith('### '):
+            section_heading = line.lstrip('#').strip()
+            break
+    
+    # Get some surrounding context (200 chars before and after)
+    context_start = max(0, selection_start - 200)
+    context_end = min(len(content), selection_end + 200)
+    surrounding_text = content[context_start:context_end]
+    
+    return {
+        'chapter_title': chapter_title,
+        'section_heading': section_heading,
+        'surrounding_text': surrounding_text,
+    }
+
+
 async def _stream_initial_edit(
     selected_text: str,
     prompt: str,
     provider: str,
+    context: dict,
 ) -> AsyncIterator[tuple[str, Optional[str]]]:
-    """Stream initial edit using Copilot CLI."""
+    """Stream initial edit using Codex CLI."""
     import asyncio
     
-    # Use Copilot CLI instead of API keys
-    model = "claude-sonnet-4.5" if provider == "anthropic" else "gpt-5.2-codex"
+    # Construct the prompt with context
+    context_info = []
+    if context.get('chapter_title'):
+        context_info.append(f"Chapter: {context['chapter_title']}")
+    if context.get('section_heading'):
+        context_info.append(f"Section: {context['section_heading']}")
     
-    # Construct the prompt for Copilot
-    full_prompt = f'{AGENT_SYSTEM_PROMPT}\n\nEdit this text: "{selected_text}"\n\nInstruction: {prompt}'
+    context_str = "\n".join(context_info)
+    
+    full_prompt = f'''{AGENT_SYSTEM_PROMPT}
+
+{context_str}
+
+Edit this text: "{selected_text}"
+
+Instruction: {prompt}'''
     
     try:
-        # Call copilot CLI in non-interactive mode
+        # Call codex CLI in non-interactive mode (uses default gpt-5.2)
         process = await asyncio.create_subprocess_exec(
-            'copilot',
-            '-p', full_prompt,
-            '--model', model,
-            '--silent',
-            '--allow-all',
+            'codex',
+            'exec',
+            '-',  # Read from stdin
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,  # Merge stderr into stdout
+            stdin=asyncio.subprocess.PIPE,
         )
         
-        full_response = ""
+        # Send prompt to stdin
+        if process.stdin:
+            process.stdin.write(full_prompt.encode('utf-8'))
+            await process.stdin.drain()
+            process.stdin.close()
         
-        # Stream output
+        full_response = ""
+        all_output = []
+        
+        # Collect all output first
         if process.stdout:
             async for line in process.stdout:
-                chunk = line.decode('utf-8')
-                if chunk:
-                    full_response += chunk
-                    yield f"event: delta\ndata: {json.dumps({'text': chunk})}\n\n", None
+                line_str = line.decode('utf-8', errors='ignore')
+                all_output.append(line_str)
         
         await process.wait()
         
-        # Clean up response (remove trailing newlines)
+        # Parse output: find lines between "codex" and "tokens used"
+        capturing = False
+        for line_str in all_output:
+            stripped = line_str.strip()
+            
+            if stripped == 'codex':
+                capturing = True
+                continue
+            
+            if 'tokens used' in stripped.lower():
+                break
+            
+            if capturing and stripped:
+                full_response += line_str
+                yield f"event: delta\ndata: {json.dumps({'text': line_str})}\n\n", None
+        
+        # Clean up response
         full_response = full_response.strip()
+        
+        if not full_response:
+            # Fallback: take last non-empty line before "tokens used"
+            for line_str in reversed(all_output):
+                stripped = line_str.strip()
+                if stripped and 'tokens used' not in stripped.lower() and stripped != 'codex':
+                    full_response = stripped
+                    break
         
         yield f"event: done\ndata: {json.dumps({'replacement': full_response})}\n\n", full_response
         
@@ -198,10 +274,8 @@ async def _stream_revision(
     revision_prompt: str,
     provider: str,
 ) -> AsyncIterator[tuple[str, Optional[str]]]:
-    """Stream revised suggestion using Copilot CLI."""
+    """Stream revised suggestion using Codex CLI."""
     import asyncio
-    
-    model = "claude-sonnet-4.5" if provider == "anthropic" else "gpt-5.2-codex"
     
     # Build context with history
     history_text = "\n".join(f"- {p}" for p in prompt_history)
@@ -221,27 +295,53 @@ Please provide a revised version:'''
     
     try:
         process = await asyncio.create_subprocess_exec(
-            'copilot',
-            '-p', full_prompt,
-            '--model', model,
-            '--silent',
-            '--allow-all',
+            'codex',
+            'exec',
+            '-',
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            stdin=asyncio.subprocess.PIPE,
         )
         
+        if process.stdin:
+            process.stdin.write(full_prompt.encode('utf-8'))
+            await process.stdin.drain()
+            process.stdin.close()
+        
         full_response = ""
+        all_output = []
         
         if process.stdout:
             async for line in process.stdout:
-                chunk = line.decode('utf-8')
-                if chunk:
-                    full_response += chunk
-                    yield f"event: delta\ndata: {json.dumps({'text': chunk})}\n\n", None
+                line_str = line.decode('utf-8', errors='ignore')
+                all_output.append(line_str)
         
         await process.wait()
         
+        # Parse output
+        capturing = False
+        for line_str in all_output:
+            stripped = line_str.strip()
+            
+            if stripped == 'codex':
+                capturing = True
+                continue
+            
+            if 'tokens used' in stripped.lower():
+                break
+            
+            if capturing and stripped:
+                full_response += line_str
+                yield f"event: delta\ndata: {json.dumps({'text': line_str})}\n\n", None
+        
         full_response = full_response.strip()
+        
+        if not full_response:
+            for line_str in reversed(all_output):
+                stripped = line_str.strip()
+                if stripped and 'tokens used' not in stripped.lower() and stripped != 'codex':
+                    full_response = stripped
+                    break
         
         yield f"event: done\ndata: {json.dumps({'replacement': full_response})}\n\n", full_response
         

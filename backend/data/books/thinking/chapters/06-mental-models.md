@@ -2,9 +2,13 @@
 
 ## First principles vs analogy
 - Example: Instead of copying a competitor's pricing, derive value drivers (costs, willingness-to-pay, constraints) from scratch.
-
+- Use analogy when explaining complex or unfamiliar concepts by relating them to something the audience already understands
+- Use first principles when you need to strip away assumptions and rebuild understanding from fundamental truths
+- Use inductive reasoning when drawing general conclusions from specific observations or patterns in data
+- Use deductive reasoning when applying established principles or rules to reach specific, logical conclusions
+- Use systems thinking when analyzing interconnected elements and understanding how they influence each other within the larger whole
 ## Occam's razor (simplicity with adequate explanation)
-- Example: A failing test is more likely a flaky dependency than a novel compiler bug; check the simple causes first.
+
 
 ## Inversion (avoid failure modes)
 - Example: For "how do we succeed?", also list "how could we fail?" (e.g., churn, outages, bad positioning) and mitigate.
