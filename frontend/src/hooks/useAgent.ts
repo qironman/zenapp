@@ -7,9 +7,10 @@ interface UseAgentOptions {
   bookSlug: string | null;
   chapterSlug: string | null;
   onEditApplied?: () => void;
+  onSuggestionComplete?: (suggestion: string) => void;
 }
 
-export function useAgent({ bookSlug, chapterSlug, onEditApplied }: UseAgentOptions) {
+export function useAgent({ bookSlug, chapterSlug, onEditApplied, onSuggestionComplete }: UseAgentOptions) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamedText, setStreamedText] = useState('');
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -27,13 +28,19 @@ export function useAgent({ bookSlug, chapterSlug, onEditApplied }: UseAgentOptio
         setStreamedText(fullText);
       } else if (event.type === 'done' && event.data.replacement) {
         setStreamedText(event.data.replacement);
+        fullText = event.data.replacement;
       } else if (event.type === 'session' && event.data.sessionId) {
         setSessionId(event.data.sessionId);
       } else if (event.type === 'error') {
         setError(event.data.error || 'Unknown error');
       }
     }
-  }, []);
+    
+    // Auto-apply suggestion when streaming completes
+    if (fullText && onSuggestionComplete) {
+      onSuggestionComplete(fullText);
+    }
+  }, [onSuggestionComplete]);
 
   // Get initial suggestion
   const getSuggestion = useCallback(async (

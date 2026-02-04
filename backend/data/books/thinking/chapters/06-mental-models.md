@@ -8,7 +8,7 @@
 - Use deductive reasoning when applying established principles or rules to reach specific, logical conclusions
 - Use systems thinking when analyzing interconnected elements and understanding how they influence each other within the larger whole
 ## Occam's razor (simplicity with adequate explanation)
-
+- example: Your app’s sign-ups drop 30% overnight. You can invent a complex story (an algorithm change, a competitor campaign, a subtle UX shift), but first test the simplest adequate explanation: the payment provider is timing out. If the checkout logs show a spike in failed transactions starting at the same time as the drop, you don’t need extra theories—fix the timeout, confirm sign-ups recover, and only then look for deeper causes if the data demands it.
 
 ## Inversion (avoid failure modes)
 - Example: For "how do we succeed?", also list "how could we fail?" (e.g., churn, outages, bad positioning) and mitigate.
@@ -51,7 +51,7 @@
 - Example: The first hour of refactoring helps a lot; the 20th hour may be polish with low marginal benefit.
 
 ## Compounding (time as a multiplier)
-- Example: Reading 20 pages/day compounds into dozens of books/year; so does daily technical debt.
+- Example: tbd
 
 ## Flywheel (reinforcing loop; momentum)
 - Example: Better product -> more users -> more data/feedback -> better product -> repeat.

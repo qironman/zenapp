@@ -55,6 +55,16 @@ export default function App() {
     bookSlug: selectedBookSlug,
     chapterSlug: selectedChapterSlug,
     onEditApplied: reloadChapter,
+    onSuggestionComplete: useCallback((suggestion: string) => {
+      // Auto-apply suggestion to edited content as soon as it arrives
+      if (selection) {
+        const before = editedContent.slice(0, selection.from);
+        const after = editedContent.slice(selection.to);
+        const newContent = before + suggestion + after;
+        setEditedContent(newContent);
+        setHasUnsavedChanges(true);
+      }
+    }, [selection, editedContent]),
   });
 
   // Handle auth errors (401)
@@ -178,26 +188,11 @@ export default function App() {
   }, [reviseSuggestion]);
 
   const handleAgentAccept = useCallback(async () => {
-    // If we have unsaved changes, apply AI suggestion locally instead of saving to backend
-    if (hasUnsavedChanges && sessionId && streamedText) {
-      // Apply the AI-generated replacement to local edited content
-      if (selection) {
-        const before = editedContent.slice(0, selection.from);
-        const after = editedContent.slice(selection.to);
-        const newContent = before + streamedText + after;
-        setEditedContent(newContent);
-        setHasUnsavedChanges(true);
-      }
-      setAgentPanelVisible(false);
-      setSelection(null);
-      discard();  // Clear agent state
-    } else {
-      // No unsaved changes - save directly to backend (original workflow)
-      await approve();
-      setAgentPanelVisible(false);
-      setSelection(null);
-    }
-  }, [approve, hasUnsavedChanges, sessionId, streamedText, selection, editedContent, discard]);
+    // Suggestion already auto-applied, just close panel and clear state
+    setAgentPanelVisible(false);
+    setSelection(null);
+    discard();  // Clear agent state
+  }, [discard]);
 
   const handleAgentDiscard = useCallback(() => {
     discard();
