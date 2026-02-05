@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from typing import List
 import os
 
-router = APIRouter()
+router = APIRouter(prefix="/api", tags=["prompts"])
 
 PROMPTS_FILE = os.path.join(os.path.dirname(__file__), '../../data/prompts.md')
 
