@@ -63,6 +63,10 @@ export function Editor({ content, onChange, onSelectionChange, disabled }: Edito
       parent: containerRef.current,
     });
 
+    // Enable native spell checking on the contenteditable element
+    const contentElement = view.contentDOM;
+    contentElement.setAttribute('spellcheck', 'true');
+
     viewRef.current = view;
 
     return () => {
