@@ -1,6 +1,7 @@
 // Agent panel for AI-powered editing
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { getPrompts } from '../lib/api';
 
 interface AgentPanelProps {
   visible: boolean;
@@ -32,10 +33,23 @@ export function AgentPanel({
   onCancel,
 }: AgentPanelProps) {
   const [prompt, setPrompt] = useState('');
+  const [prompts, setPrompts] = useState<string[]>([]);
+  const [showCustom, setShowCustom] = useState(false);
+  
+  // Load prompts when panel becomes visible
+  useEffect(() => {
+    if (visible && !hasSession) {
+      getPrompts().then(setPrompts).catch(console.error);
+    }
+  }, [visible, hasSession]);
   
   if (!visible) return null;
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handlePromptSelect = (selectedPrompt: string) => {
+    onSubmit(selectedPrompt);
+  };
+
+  const handleCustomSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!prompt.trim()) return;
     
@@ -55,20 +69,41 @@ export function AgentPanel({
           <p>{selectedText.length > 200 ? selectedText.slice(0, 200) + '...' : selectedText}</p>
         </div>
 
-        {/* Prompt input */}
-        <form onSubmit={handleSubmit}>
-          <input
-            type="text"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            placeholder={hasSession ? "How should I revise this?" : "What should the AI do?"}
-            autoFocus
-            disabled={isStreaming}
-          />
-          <button type="submit" disabled={isStreaming || !prompt.trim()}>
-            {isStreaming ? 'Thinking...' : hasSession ? 'Revise' : 'Suggest'}
-          </button>
-        </form>
+        {/* Show pre-defined prompts or custom input */}
+        {!hasSession && !showCustom && prompts.length > 0 ? (
+          <>
+            <div className="prompt-list">
+              <label>Choose an action:</label>
+              {prompts.map((p, i) => (
+                <button
+                  key={i}
+                  className="prompt-option"
+                  onClick={() => handlePromptSelect(p)}
+                  disabled={isStreaming}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+            <button className="custom-prompt-btn" onClick={() => setShowCustom(true)}>
+              Custom prompt...
+            </button>
+          </>
+        ) : (
+          <form onSubmit={handleCustomSubmit}>
+            <input
+              type="text"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder={hasSession ? "How should I revise this?" : "What should the AI do?"}
+              autoFocus
+              disabled={isStreaming}
+            />
+            <button type="submit" disabled={isStreaming || !prompt.trim()}>
+              {isStreaming ? 'Thinking...' : hasSession ? 'Revise' : 'Suggest'}
+            </button>
+          </form>
+        )}
 
         {/* Show streaming response */}
         {(streamedText || isStreaming) && (

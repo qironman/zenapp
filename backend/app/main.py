@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-from .routers import books, chapters, agent
+from .routers import books, chapters, agent, prompts
 from .auth import LoginRequest, Token, authenticate_user, create_access_token
 
 app = FastAPI(
@@ -34,6 +34,7 @@ app.add_middleware(
 app.include_router(books.router)
 app.include_router(chapters.router)
 app.include_router(agent.router)
+app.include_router(prompts.router)
 
 
 @app.post("/api/login", response_model=Token)

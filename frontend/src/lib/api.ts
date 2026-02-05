@@ -190,3 +190,25 @@ export async function approveEdit(sessionId: string, bookSlug: string, chapterSl
   if (!res.ok) throw new Error('Failed to approve edit');
   return res.json();
 }
+
+// --- Prompts ---
+
+export async function getPrompts(): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/prompts`, {
+    headers: authHeaders(),
+  });
+  if (res.status === 401) { clearToken(); throw new Error('Unauthorized'); }
+  if (!res.ok) throw new Error('Failed to fetch prompts');
+  return res.json();
+}
+
+export async function savePrompts(prompts: string[]): Promise<{ status: string; count: number }> {
+  const res = await fetch(`${API_BASE}/prompts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(prompts),
+  });
+  if (res.status === 401) { clearToken(); throw new Error('Unauthorized'); }
+  if (!res.ok) throw new Error('Failed to save prompts');
+  return res.json();
+}
