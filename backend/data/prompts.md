@@ -2,7 +2,9 @@
 
 Based on this, write an essay with Vonnegut style in English.
 
-Based on this, write an essay with Vonnegut style in Chinese.
+用王硕加持鲁迅的口吻把这段写成杂文
+
+Expand this section with more details and examples, ideally in science and tech history.
 
 Expand this section with more details and examples.
 
@@ -10,6 +12,3 @@ Make this more concise and clear.
 
 Fix grammar and spelling issues.
 
-Translate this to Chinese.
-
-Translate this to English.

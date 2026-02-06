@@ -92,7 +92,7 @@ export async function createChapter(bookSlug: string, title: string): Promise<{ 
   return res.json();
 }
 
-export async function saveChapter(bookSlug: string, chapterSlug: string, content: string): Promise<void> {
+export async function saveChapter(bookSlug: string, chapterSlug: string, content: string): Promise<{ updatedAt: string; gitCommitted: boolean }> {
   const res = await fetch(`${API_BASE}/books/${bookSlug}/chapters/${chapterSlug}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -100,6 +100,7 @@ export async function saveChapter(bookSlug: string, chapterSlug: string, content
   });
   if (res.status === 401) { clearToken(); throw new Error('Unauthorized'); }
   if (!res.ok) throw new Error('Failed to save chapter');
+  return res.json();
 }
 
 // --- Agent ---

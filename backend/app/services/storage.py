@@ -1,11 +1,13 @@
 """File-based storage service for books and chapters."""
 import json
 import os
+import subprocess
 from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
 DATA_DIR = Path(__file__).parent.parent.parent / "data" / "books"
+REPO_ROOT = Path(__file__).parent.parent.parent.parent
 
 
 def _slugify(text: str) -> str:
@@ -123,8 +125,55 @@ def get_chapter(book_slug: str, chapter_slug: str) -> Optional[dict]:
     }
 
 
+def _git_commit_and_push(book_slug: str, chapter_slug: str, book_title: str = None):
+    """Commit and push chapter changes to git."""
+    try:
+        # Get book title for better commit message
+        if not book_title:
+            meta_file = DATA_DIR / book_slug / "book.json"
+            if meta_file.exists():
+                meta = json.loads(meta_file.read_text())
+                book_title = meta.get("title", book_slug)
+            else:
+                book_title = book_slug
+        
+        # Relative path from repo root
+        ch_file_rel = f"backend/data/books/{book_slug}/chapters/{chapter_slug}.md"
+        
+        # Git add
+        subprocess.run(
+            ["git", "add", ch_file_rel],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+        )
+        
+        # Git commit with descriptive message
+        commit_msg = f"Update {book_title}/{chapter_slug}"
+        subprocess.run(
+            ["git", "commit", "-m", commit_msg],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+        )
+        
+        # Git push
+        subprocess.run(
+            ["git", "push"],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+        )
+        
+        return True
+    except subprocess.CalledProcessError as e:
+        # Log error but don't fail the save
+        print(f"Git operation failed: {e}")
+        return False
+
+
 def save_chapter(book_slug: str, chapter_slug: str, content: str) -> dict:
-    """Save chapter content."""
+    """Save chapter content and commit to git."""
     chapters_dir = DATA_DIR / book_slug / "chapters"
     chapters_dir.mkdir(parents=True, exist_ok=True)
     
@@ -132,14 +181,22 @@ def save_chapter(book_slug: str, chapter_slug: str, content: str) -> dict:
     ch_file.write_text(content)
     
     # Update chapter order if new
+    book_title = None
     meta_file = DATA_DIR / book_slug / "book.json"
     if meta_file.exists():
         meta = json.loads(meta_file.read_text())
+        book_title = meta.get("title", book_slug)
         if chapter_slug not in meta.get("chapterOrder", []):
             meta.setdefault("chapterOrder", []).append(chapter_slug)
             meta_file.write_text(json.dumps(meta, indent=2))
     
-    return {"updatedAt": datetime.utcnow().isoformat() + "Z"}
+    # Commit and push to git
+    git_success = _git_commit_and_push(book_slug, chapter_slug, book_title)
+    
+    return {
+        "updatedAt": datetime.utcnow().isoformat() + "Z",
+        "gitCommitted": git_success,
+    }
 
 
 def create_chapter(book_slug: str, title: str) -> dict:

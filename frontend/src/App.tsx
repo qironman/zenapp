@@ -29,6 +29,7 @@ export default function App() {
   const [editedContent, setEditedContent] = useState<string>('');  // Track manual edits
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
 
   // Data hooks
   const { books, loading: booksLoading, create: createBook, error: booksError } = useBooks();
@@ -128,12 +129,24 @@ export default function App() {
     
     setIsSaving(true);
     try {
-      await saveChapter(selectedBookSlug, selectedChapterSlug, editedContent);
+      const result = await saveChapter(selectedBookSlug, selectedChapterSlug, editedContent);
       setHasUnsavedChanges(false);
+      
+      // Show success message
+      if (result.gitCommitted) {
+        setSaveMessage('✓ Saved and pushed to git');
+      } else {
+        setSaveMessage('✓ Saved (git commit failed)');
+      }
+      
+      // Clear message after 3 seconds
+      setTimeout(() => setSaveMessage(null), 3000);
+      
       await reloadChapter();  // Reload to get saved content
     } catch (err) {
       console.error('Save failed:', err);
-      alert('Failed to save chapter');
+      setSaveMessage('✗ Save failed');
+      setTimeout(() => setSaveMessage(null), 3000);
     } finally {
       setIsSaving(false);
     }
@@ -217,6 +230,13 @@ export default function App() {
 
   return (
     <div className="app">
+      {/* Toast notification for save feedback */}
+      {saveMessage && (
+        <div className="save-toast">
+          {saveMessage}
+        </div>
+      )}
+
       {/* Header */}
       <header className="app-header">
         <button 

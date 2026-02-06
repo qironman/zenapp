@@ -18,8 +18,7 @@ Potential issues:
 - Cum Vwap volume going down or stale for a long time 
 
 ## zenapp
+- tos for equity data and IV rank, option
 - designate specific model for each book
-- dropdown of prompts 
-- auto correction on UI
 - point agent to path of books to refer to and read
 
