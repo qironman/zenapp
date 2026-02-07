@@ -219,9 +219,10 @@ export default function App() {
 
   const handleAIButtonClick = useCallback(() => {
     if (selection && selection.text.length > 0) {
+      resetAgent();  // Clear any stale session state from previous interactions
       setAgentPanelVisible(true);
     }
-  }, [selection]);
+  }, [selection, resetAgent]);
 
   // Show login page if not authenticated
   if (!authenticated) {

@@ -36,10 +36,15 @@ export function AgentPanel({
   const [prompts, setPrompts] = useState<string[]>([]);
   const [showCustom, setShowCustom] = useState(false);
   
-  // Load prompts when panel becomes visible
+  // Load prompts when panel becomes visible (always reload for fresh start)
   useEffect(() => {
-    if (visible && !hasSession) {
-      getPrompts().then(setPrompts).catch(console.error);
+    if (visible) {
+      if (!hasSession) {
+        // Reset to prompt selection mode when opening without a session
+        setShowCustom(false);
+        setPrompt('');
+        getPrompts().then(setPrompts).catch(console.error);
+      }
     }
   }, [visible, hasSession]);
   
