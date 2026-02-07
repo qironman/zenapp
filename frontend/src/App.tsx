@@ -169,9 +169,9 @@ export default function App() {
     try {
       const result = await uploadImage(selectedBookSlug, file);
       
-      // Insert markdown at cursor position or end of selection
+      // Insert markdown at cursor position or end of content
       const insertPos = selection ? selection.to : editedContent.length;
-      const markdownImage = `![](${result.url})`;
+      const markdownImage = `\n![](${result.url})\n`;
       
       const newContent = 
         editedContent.slice(0, insertPos) + 
