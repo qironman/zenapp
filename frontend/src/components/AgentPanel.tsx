@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { getPrompts } from '../lib/api';
+import { withRetry } from '../lib/retry';
 
 interface AgentPanelProps {
   visible: boolean;
@@ -43,7 +44,7 @@ export function AgentPanel({
         // Reset to prompt selection mode when opening without a session
         setShowCustom(false);
         setPrompt('');
-        getPrompts().then(setPrompts).catch(console.error);
+        withRetry(() => getPrompts()).then(setPrompts).catch(console.error);
       }
     }
   }, [visible, hasSession]);

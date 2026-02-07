@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { fetchBooks, fetchBook, createBook } from '../lib/api';
+import { withRetry } from '../lib/retry';
 import type { Book } from '../types';
 
 export function useBooks() {
@@ -12,7 +13,7 @@ export function useBooks() {
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await fetchBooks();
+      const data = await withRetry(() => fetchBooks());
       setBooks(data);
       setError(null);
     } catch (e) {
@@ -47,7 +48,7 @@ export function useBook(slug: string | null) {
     }
 
     setLoading(true);
-    fetchBook(slug)
+    withRetry(() => fetchBook(slug))
       .then(data => {
         setBook(data);
         setError(null);

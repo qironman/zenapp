@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { fetchChapter } from '../lib/api';
+import { withRetry } from '../lib/retry';
 
 interface UseChapterOptions {
   bookSlug: string | null;
@@ -22,7 +23,7 @@ export function useChapter({ bookSlug, chapterSlug }: UseChapterOptions) {
 
     setLoading(true);
     try {
-      const data = await fetchChapter(bookSlug, chapterSlug);
+      const data = await withRetry(() => fetchChapter(bookSlug, chapterSlug));
       setContent(data.content);
       setLastUpdated(data.updatedAt);
       setError(null);
