@@ -670,6 +670,31 @@
   cursor: not-allowed;
 }
 
+/* Select All for AI FAB */
+.select-all-fab {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  padding: 12px 20px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-radius: 24px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  z-index: 100;
+  transition: all 0.2s ease;
+}
+
+.select-all-fab:hover {
+  background: var(--bg-secondary);
+  border-color: var(--primary);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
 /* Agent Panel (Bottom Sheet) */
 .agent-panel {
   position: fixed;

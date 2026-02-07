@@ -272,6 +272,21 @@ export default function App() {
     }
   }, [selection, resetAgent]);
 
+  const handleSelectAllForAI = useCallback(() => {
+    if (!editedContent) return;
+    
+    // Set selection to entire content
+    setSelection({
+      from: 0,
+      to: editedContent.length,
+      text: editedContent
+    });
+    
+    // Open AI panel
+    resetAgent();
+    setAgentPanelVisible(true);
+  }, [editedContent, resetAgent]);
+
   // Show login page if not authenticated
   if (!authenticated) {
     return <LoginPage onLogin={handleLogin} />;
@@ -373,6 +388,17 @@ export default function App() {
                       {isUploadingImage ? '⏳' : '📷'}
                     </button>
                   </>
+                )}
+                
+                {/* Select All for AI button - show when no selection */}
+                {!agentPanelVisible && !selection && (
+                  <button 
+                    className="select-all-fab" 
+                    onClick={handleSelectAllForAI}
+                    title="Select all text for AI editing"
+                  >
+                    ✨ All
+                  </button>
                 )}
                 
                 {/* Switch to read mode */}
