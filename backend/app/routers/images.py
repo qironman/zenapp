@@ -9,7 +9,7 @@ import io
 
 from ..auth import get_current_user
 
-router = APIRouter()
+router = APIRouter(prefix="/api/books", tags=["images"])
 
 # Constants
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
