@@ -250,6 +250,7 @@ export default function App() {
           books={books}
           selectedSlug={selectedBookSlug}
           onSelect={handleBookSelect}
+          onCreateNew={handleCreateBook}
           loading={booksLoading}
         />
         <button className="logout-btn" onClick={handleLogout} title="Sign out">

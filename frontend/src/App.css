@@ -185,6 +185,18 @@
   background: var(--primary-dark);
 }
 
+.book-picker .new-book-btn {
+  min-width: 36px;
+  font-size: 20px;
+  font-weight: bold;
+  padding: 4px 12px;
+}
+
+.book-picker .new-book-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Sync Status */
 .sync-status {
   display: flex;

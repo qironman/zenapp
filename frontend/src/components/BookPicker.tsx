@@ -6,10 +6,11 @@ interface BookPickerProps {
   books: Book[];
   selectedSlug: string | null;
   onSelect: (slug: string) => void;
+  onCreateNew: () => void;
   loading?: boolean;
 }
 
-export function BookPicker({ books, selectedSlug, onSelect, loading }: BookPickerProps) {
+export function BookPicker({ books, selectedSlug, onSelect, onCreateNew, loading }: BookPickerProps) {
   return (
     <div className="book-picker">
       <select
@@ -24,6 +25,14 @@ export function BookPicker({ books, selectedSlug, onSelect, loading }: BookPicke
           </option>
         ))}
       </select>
+      <button 
+        className="new-book-btn" 
+        onClick={onCreateNew}
+        disabled={loading}
+        title="Create new book"
+      >
+        +
+      </button>
     </div>
   );
 }
