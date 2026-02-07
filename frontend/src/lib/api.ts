@@ -213,3 +213,22 @@ export async function savePrompts(prompts: string[]): Promise<{ status: string; 
   if (!res.ok) throw new Error('Failed to save prompts');
   return res.json();
 }
+
+// --- Images ---
+
+export async function uploadImage(bookSlug: string, file: File): Promise<{ url: string; filename: string; size: number }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  
+  const res = await fetch(`${API_BASE}/books/${bookSlug}/images`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: formData,
+  });
+  if (res.status === 401) { clearToken(); throw new Error('Unauthorized'); }
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Failed to upload image' }));
+    throw new Error(error.detail || 'Failed to upload image');
+  }
+  return res.json();
+}

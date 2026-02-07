@@ -10,7 +10,7 @@ import { Editor } from './components/Editor';
 import { Reader } from './components/Reader';
 import { AgentPanel } from './components/AgentPanel';
 import { LoginPage } from './components/LoginPage';
-import { createChapter, isAuthenticated, logout, saveChapter } from './lib/api';
+import { createChapter, isAuthenticated, logout, saveChapter, uploadImage } from './lib/api';
 
 import './App.css';
 
@@ -30,6 +30,8 @@ export default function App() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Data hooks
   const { books, loading: booksLoading, create: createBook, error: booksError } = useBooks();
@@ -151,6 +153,52 @@ export default function App() {
       setIsSaving(false);
     }
   }, [selectedBookSlug, selectedChapterSlug, editedContent, hasUnsavedChanges, reloadChapter]);
+
+  const handleImageUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !selectedBookSlug) return;
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      setSaveMessage('✗ Image too large (max 5MB)');
+      setTimeout(() => setSaveMessage(null), 3000);
+      return;
+    }
+
+    setIsUploadingImage(true);
+    try {
+      const result = await uploadImage(selectedBookSlug, file);
+      
+      // Insert markdown at cursor position or end of selection
+      const insertPos = selection ? selection.to : editedContent.length;
+      const markdownImage = `![](${result.url})`;
+      
+      const newContent = 
+        editedContent.slice(0, insertPos) + 
+        markdownImage + 
+        editedContent.slice(insertPos);
+      
+      setEditedContent(newContent);
+      setHasUnsavedChanges(true);
+      
+      setSaveMessage('✓ Image inserted');
+      setTimeout(() => setSaveMessage(null), 3000);
+    } catch (error) {
+      console.error('Image upload failed:', error);
+      setSaveMessage('✗ Upload failed');
+      setTimeout(() => setSaveMessage(null), 3000);
+    } finally {
+      setIsUploadingImage(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }, [selectedBookSlug, selection, editedContent]);
+
+  const handleInsertImageClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
 
   const handleToggleEditMode = useCallback(() => {
     // Save scroll position before switching
@@ -303,6 +351,28 @@ export default function App() {
                   <button className="ai-fab" onClick={handleAIButtonClick}>
                     ✨ AI Edit
                   </button>
+                )}
+                
+                {/* Insert Image button */}
+                {!agentPanelVisible && (
+                  <>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handleImageUpload}
+                      style={{ display: 'none' }}
+                    />
+                    <button 
+                      className="image-fab" 
+                      onClick={handleInsertImageClick}
+                      disabled={isUploadingImage}
+                      title="Insert image"
+                    >
+                      {isUploadingImage ? '⏳' : '📷'}
+                    </button>
+                  </>
                 )}
                 
                 {/* Switch to read mode */}
