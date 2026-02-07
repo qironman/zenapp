@@ -169,19 +169,27 @@ export default function App() {
     try {
       const result = await uploadImage(selectedBookSlug, file);
       
-      // Insert markdown at cursor position or end of content
-      const insertPos = selection ? selection.to : editedContent.length;
-      const markdownImage = `\n![](${result.url})\n`;
+      // Find the position right after the first heading (title)
+      const lines = editedContent.split('\n');
+      let insertLineIndex = 0;
       
-      const newContent = 
-        editedContent.slice(0, insertPos) + 
-        markdownImage + 
-        editedContent.slice(insertPos);
+      // Find first heading line (starts with #)
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].trim().startsWith('#')) {
+          insertLineIndex = i + 1; // Insert after the title
+          break;
+        }
+      }
+      
+      // Insert image markdown right after title
+      const markdownImage = `![](${result.url})`;
+      lines.splice(insertLineIndex, 0, '', markdownImage, ''); // Add blank lines around image
+      const newContent = lines.join('\n');
       
       setEditedContent(newContent);
       setHasUnsavedChanges(true);
       
-      setSaveMessage('✓ Image inserted');
+      setSaveMessage('✓ Image inserted below title');
       setTimeout(() => setSaveMessage(null), 3000);
     } catch (error) {
       console.error('Image upload failed:', error);
@@ -194,7 +202,7 @@ export default function App() {
         fileInputRef.current.value = '';
       }
     }
-  }, [selectedBookSlug, selection, editedContent]);
+  }, [selectedBookSlug, editedContent]);
 
   const handleInsertImageClick = useCallback(() => {
     fileInputRef.current?.click();
