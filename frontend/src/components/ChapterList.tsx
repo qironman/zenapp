@@ -12,6 +12,7 @@ interface ChapterListProps {
   onCreateNew: () => void;
   visible: boolean;
   onClose: () => void;
+  loading?: boolean;  // Loading state for book data
 }
 
 export function ChapterList({ 
@@ -22,6 +23,7 @@ export function ChapterList({
   onCreateNew,
   visible,
   onClose,
+  loading = false,
 }: ChapterListProps) {
   // Extract TOC from current chapter
   const toc = useMemo(() => {
@@ -43,40 +45,48 @@ export function ChapterList({
         <h3>Chapters</h3>
         <button className="close-btn" onClick={onClose}>×</button>
       </div>
-      <ul>
-        {chapters.map((chapter) => (
-          <li key={chapter.slug}>
-            <div
-              className={`chapter-item ${chapter.slug === selectedSlug ? 'selected' : ''}`}
-              onClick={() => {
-                onSelect(chapter.slug);
-                onClose();
-              }}
-            >
-              {chapter.title}
-            </div>
-            
-            {/* Show TOC for selected chapter */}
-            {chapter.slug === selectedSlug && toc.length > 0 && (
-              <ul className="toc">
-                {toc.map((item, idx) => (
-                  <li
-                    key={idx}
-                    className={`toc-item toc-level-${item.level}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleTocClick(item.id);
-                    }}
-                  >
-                    {item.text}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </li>
-        ))}
-      </ul>
-      <button className="new-chapter-btn" onClick={onCreateNew}>+ New Chapter</button>
+      {loading ? (
+        <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+          Loading chapters...
+        </div>
+      ) : (
+        <>
+          <ul>
+            {chapters.map((chapter) => (
+              <li key={chapter.slug}>
+                <div
+                  className={`chapter-item ${chapter.slug === selectedSlug ? 'selected' : ''}`}
+                  onClick={() => {
+                    onSelect(chapter.slug);
+                    onClose();
+                  }}
+                >
+                  {chapter.title}
+                </div>
+                
+                {/* Show TOC for selected chapter */}
+                {chapter.slug === selectedSlug && toc.length > 0 && (
+                  <ul className="toc">
+                    {toc.map((item, idx) => (
+                      <li
+                        key={idx}
+                        className={`toc-item toc-level-${item.level}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleTocClick(item.id);
+                        }}
+                      >
+                        {item.text}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+          <button className="new-chapter-btn" onClick={onCreateNew}>+ New Chapter</button>
+        </>
+      )}
     </div>
   );
 }

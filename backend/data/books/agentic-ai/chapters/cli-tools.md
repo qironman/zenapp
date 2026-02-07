@@ -1,4 +1,8 @@
 # TODO
+## 最好的时光就是当下
+当下就是修行的好时机，无论如何逆境
+focus on your breath
+观自己的思绪，情绪，no judgement, just observe, as if you are observing others
 
 ## CLB
 

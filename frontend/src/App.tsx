@@ -33,7 +33,7 @@ export default function App() {
 
   // Data hooks
   const { books, loading: booksLoading, create: createBook, error: booksError } = useBooks();
-  const { book } = useBook(selectedBookSlug);
+  const { book, loading: bookLoading } = useBook(selectedBookSlug);
   const { 
     content, 
     loading: chapterLoading, 
@@ -259,13 +259,14 @@ export default function App() {
 
       {/* Sidebar */}
       <ChapterList
-        chapters={book?.chapters || []}
+        chapters={bookLoading ? [] : (book?.chapters || [])}
         selectedSlug={selectedChapterSlug}
         currentContent={content}
         onSelect={handleChapterSelect}
         onCreateNew={handleCreateChapter}
         visible={sidebarVisible}
         onClose={() => setSidebarVisible(false)}
+        loading={bookLoading}
       />
 
       {/* Main content */}
