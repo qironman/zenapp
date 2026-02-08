@@ -41,25 +41,28 @@ export function useBook(slug: string | null) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!slug) {
       setBook(null);
+      setError(null);
       return;
     }
 
     setLoading(true);
-    withRetry(() => fetchBook(slug))
-      .then(data => {
-        setBook(data);
-        setError(null);
-      })
-      .catch(e => {
-        setError(e instanceof Error ? e.message : 'Failed to load book');
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    try {
+      const data = await withRetry(() => fetchBook(slug));
+      setBook(data);
+      setError(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load book');
+    } finally {
+      setLoading(false);
+    }
   }, [slug]);
 
-  return { book, loading, error };
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return { book, loading, error, reload: load };
 }

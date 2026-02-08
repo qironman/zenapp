@@ -81,7 +81,7 @@ export async function fetchChapter(bookSlug: string, chapterSlug: string): Promi
   return res.json();
 }
 
-export async function createChapter(bookSlug: string, title: string): Promise<{ slug: string }> {
+export async function createChapter(bookSlug: string, title: string): Promise<{ slug: string; gitCommitted?: boolean }> {
   const res = await fetch(`${API_BASE}/books/${bookSlug}/chapters`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -92,7 +92,11 @@ export async function createChapter(bookSlug: string, title: string): Promise<{ 
   return res.json();
 }
 
-export async function saveChapter(bookSlug: string, chapterSlug: string, content: string): Promise<{ updatedAt: string; gitCommitted: boolean }> {
+export async function saveChapter(
+  bookSlug: string,
+  chapterSlug: string,
+  content: string,
+): Promise<{ updatedAt: string; gitCommitted: boolean; chapterSlug?: string; renamed?: boolean }> {
   const res = await fetch(`${API_BASE}/books/${bookSlug}/chapters/${chapterSlug}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
@@ -229,6 +233,62 @@ export async function uploadImage(bookSlug: string, file: File): Promise<{ url: 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: 'Failed to upload image' }));
     throw new Error(error.detail || 'Failed to upload image');
+  }
+  return res.json();
+}
+
+// --- Xiaohongshu Publishing ---
+
+export interface XiaohongshuPublishPreview {
+  title: string;
+  content: string;
+  imageCount: number;
+  imageUrls: string[];
+}
+
+export interface XiaohongshuPublishStatus {
+  platform: 'xiaohongshu';
+  bookSlug: string;
+  chapterSlug: string;
+  published: boolean;
+  needsUpdate: boolean;
+  postId?: string | null;
+  postUrl?: string | null;
+  lastPublishedAt?: string | null;
+  lastOperation?: 'create' | 'update' | null;
+  status: string;
+  webhookConfigured: boolean;
+  preview: XiaohongshuPublishPreview;
+  operation?: 'create' | 'update';
+  message?: string;
+}
+
+export async function fetchXiaohongshuStatus(bookSlug: string, chapterSlug: string): Promise<XiaohongshuPublishStatus> {
+  const res = await fetch(`${API_BASE}/publish/xiaohongshu/${bookSlug}/${chapterSlug}`, {
+    headers: authHeaders(),
+  });
+  if (res.status === 401) { clearToken(); throw new Error('Unauthorized'); }
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Failed to fetch publish status' }));
+    throw new Error(error.detail || 'Failed to fetch publish status');
+  }
+  return res.json();
+}
+
+export async function publishToXiaohongshu(
+  bookSlug: string,
+  chapterSlug: string,
+  options?: { force?: boolean },
+): Promise<XiaohongshuPublishStatus> {
+  const res = await fetch(`${API_BASE}/publish/xiaohongshu/${bookSlug}/${chapterSlug}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ force: !!options?.force }),
+  });
+  if (res.status === 401) { clearToken(); throw new Error('Unauthorized'); }
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ detail: 'Failed to publish chapter' }));
+    throw new Error(error.detail || 'Failed to publish chapter');
   }
   return res.json();
 }

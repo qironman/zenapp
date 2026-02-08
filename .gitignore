@@ -21,6 +21,9 @@ Thumbs.db
 
 # Images (stored in /data4/zenapp/backend for backup)
 backend/data/books/*/images/
+backend/data/publish/
+backend/data/xhs_profile/
+backend/data/xhs_webhook/
 
 # Logs
 *.log

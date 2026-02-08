@@ -1,6 +1,5 @@
 """File-based storage service for books and chapters."""
 import json
-import os
 import subprocess
 from pathlib import Path
 from datetime import datetime
@@ -13,6 +12,18 @@ REPO_ROOT = Path(__file__).parent.parent.parent.parent
 def _slugify(text: str) -> str:
     """Convert text to URL-safe slug."""
     return text.lower().replace(" ", "-").replace("_", "-")
+
+
+def _extract_heading_slug(content: str, fallback_slug: str) -> str:
+    """Derive chapter slug from first markdown heading."""
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("# "):
+            heading = stripped[2:].strip()
+            if heading:
+                return _slugify(heading)
+            break
+    return fallback_slug
 
 
 def ensure_data_dir():
@@ -97,7 +108,12 @@ def create_book(title: str, author: str = "") -> dict:
         "chapterOrder": [],
     }
     (book_dir / "book.json").write_text(json.dumps(meta, indent=2))
-    return {"slug": slug, "title": title}
+
+    book_meta_path = f"backend/data/books/{slug}/book.json"
+    commit_msg = f"Add book {title}"
+    git_success = _git_commit_and_push([book_meta_path], commit_msg)
+
+    return {"slug": slug, "title": title, "gitCommitted": git_success}
 
 
 def delete_book(slug: str) -> bool:
@@ -125,48 +141,51 @@ def get_chapter(book_slug: str, chapter_slug: str) -> Optional[dict]:
     }
 
 
-def _git_commit_and_push(book_slug: str, chapter_slug: str, book_title: str = None):
-    """Commit and push chapter changes to git."""
+def _run_git(args: list[str]) -> subprocess.CompletedProcess:
+    """Run git command in repo root."""
+    return subprocess.run(
+        ["git", *args],
+        cwd=REPO_ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+
+def _is_missing_pathspec(stderr: str) -> bool:
+    lowered = stderr.lower()
+    return "pathspec" in lowered and ("did not match any file" in lowered or "did not match any files" in lowered)
+
+
+def _git_commit_and_push(paths: list[str], commit_msg: str) -> bool:
+    """Stage selected paths, commit (if changed), and push."""
     try:
-        # Get book title for better commit message
-        if not book_title:
-            meta_file = DATA_DIR / book_slug / "book.json"
-            if meta_file.exists():
-                meta = json.loads(meta_file.read_text())
-                book_title = meta.get("title", book_slug)
-            else:
-                book_title = book_slug
-        
-        # Relative path from repo root
-        ch_file_rel = f"backend/data/books/{book_slug}/chapters/{chapter_slug}.md"
-        
-        # Git add
-        subprocess.run(
-            ["git", "add", ch_file_rel],
-            cwd=REPO_ROOT,
-            check=True,
-            capture_output=True,
-        )
-        
-        # Git commit with descriptive message
-        commit_msg = f"Update {book_title}/{chapter_slug}"
-        subprocess.run(
-            ["git", "commit", "-m", commit_msg],
-            cwd=REPO_ROOT,
-            check=True,
-            capture_output=True,
-        )
-        
-        # Git push
-        subprocess.run(
-            ["git", "push"],
-            cwd=REPO_ROOT,
-            check=True,
-            capture_output=True,
-        )
-        
+        for path in paths:
+            add_result = _run_git(["add", "-A", "--", path])
+            if add_result.returncode != 0:
+                err = add_result.stderr.strip()
+                if _is_missing_pathspec(err):
+                    continue
+                print(f"Git add failed: {err}")
+                return False
+
+        # Nothing staged means file content didn't change.
+        staged_result = _run_git(["diff", "--cached", "--quiet"])
+        if staged_result.returncode == 0:
+            return True
+
+        commit_result = _run_git(["commit", "-m", commit_msg])
+        if commit_result.returncode != 0:
+            print(f"Git commit failed: {commit_result.stderr.strip()}")
+            return False
+
+        push_result = _run_git(["push"])
+        if push_result.returncode != 0:
+            print(f"Git push failed: {push_result.stderr.strip()}")
+            return False
+
         return True
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         # Log error but don't fail the save
         print(f"Git operation failed: {e}")
         return False
@@ -176,26 +195,68 @@ def save_chapter(book_slug: str, chapter_slug: str, content: str) -> dict:
     """Save chapter content and commit to git."""
     chapters_dir = DATA_DIR / book_slug / "chapters"
     chapters_dir.mkdir(parents=True, exist_ok=True)
-    
-    ch_file = chapters_dir / f"{chapter_slug}.md"
-    ch_file.write_text(content)
-    
-    # Update chapter order if new
+
+    old_slug = chapter_slug
+    target_slug = _extract_heading_slug(content, chapter_slug)
+    target_file = chapters_dir / f"{target_slug}.md"
+    old_file = chapters_dir / f"{old_slug}.md"
+
+    # Avoid overwriting another chapter when heading-generated slug collides.
+    if target_slug != old_slug and target_file.exists():
+        target_slug = old_slug
+        target_file = old_file
+
+    chapter_is_new = not old_file.exists() and not target_file.exists()
+    did_move = target_slug != old_slug and old_file.exists()
+
+    if did_move:
+        old_file.rename(target_file)
+
+    target_file.write_text(content)
+
+    # Update chapter order and metadata.
     book_title = None
     meta_file = DATA_DIR / book_slug / "book.json"
+    meta_changed = False
     if meta_file.exists():
         meta = json.loads(meta_file.read_text())
         book_title = meta.get("title", book_slug)
-        if chapter_slug not in meta.get("chapterOrder", []):
-            meta.setdefault("chapterOrder", []).append(chapter_slug)
+        order = list(meta.get("chapterOrder", []))
+
+        if target_slug != old_slug:
+            order = [target_slug if slug == old_slug else slug for slug in order]
+            meta_changed = True
+
+        if target_slug not in order:
+            order.append(target_slug)
+            meta_changed = True
+
+        if meta_changed:
+            meta["chapterOrder"] = order
             meta_file.write_text(json.dumps(meta, indent=2))
-    
-    # Commit and push to git
-    git_success = _git_commit_and_push(book_slug, chapter_slug, book_title)
+
+    renamed = target_slug != old_slug
+    action = "Rename" if renamed else ("Add" if chapter_is_new else "Update")
+    if renamed:
+        commit_msg = f"Rename {book_title or book_slug}/{old_slug} -> {target_slug}"
+    else:
+        commit_msg = f"{action} {book_title or book_slug}/{target_slug}"
+
+    target_path = f"backend/data/books/{book_slug}/chapters/{target_slug}.md"
+    old_path = f"backend/data/books/{book_slug}/chapters/{old_slug}.md"
+    meta_path = f"backend/data/books/{book_slug}/book.json"
+
+    # Commit and push chapter + metadata updates, including old path for rename/delete staging.
+    commit_paths = [target_path, meta_path]
+    if did_move:
+        commit_paths.append(old_path)
+    git_success = _git_commit_and_push(commit_paths, commit_msg)
     
     return {
         "updatedAt": datetime.utcnow().isoformat() + "Z",
         "gitCommitted": git_success,
+        "chapterSlug": target_slug,
+        "renamed": renamed,
     }
 
 
@@ -203,8 +264,11 @@ def create_chapter(book_slug: str, title: str) -> dict:
     """Create a new chapter."""
     slug = _slugify(title)
     content = f"# {title}\n\n"
-    save_chapter(book_slug, slug, content)
-    return {"slug": slug}
+    result = save_chapter(book_slug, slug, content)
+    return {
+        "slug": result.get("chapterSlug", slug),
+        "gitCommitted": result.get("gitCommitted", False),
+    }
 
 
 def delete_chapter(book_slug: str, chapter_slug: str) -> bool:
@@ -221,7 +285,14 @@ def delete_chapter(book_slug: str, chapter_slug: str) -> bool:
         if chapter_slug in meta.get("chapterOrder", []):
             meta["chapterOrder"].remove(chapter_slug)
             meta_file.write_text(json.dumps(meta, indent=2))
-    
+
+    meta_path = f"backend/data/books/{book_slug}/book.json"
+    chapter_path = f"backend/data/books/{book_slug}/chapters/{chapter_slug}.md"
+    _git_commit_and_push(
+        [chapter_path, meta_path],
+        f"Delete {book_slug}/{chapter_slug}",
+    )
+
     return True
 
 
@@ -234,4 +305,11 @@ def reorder_chapters(book_slug: str, chapter_order: list[str]) -> bool:
     meta = json.loads(meta_file.read_text())
     meta["chapterOrder"] = chapter_order
     meta_file.write_text(json.dumps(meta, indent=2))
+
+    meta_path = f"backend/data/books/{book_slug}/book.json"
+    _git_commit_and_push(
+        [meta_path],
+        f"Reorder chapters in {book_slug}",
+    )
+
     return True

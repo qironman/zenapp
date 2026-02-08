@@ -10,7 +10,16 @@ import { Editor } from './components/Editor';
 import { Reader } from './components/Reader';
 import { AgentPanel } from './components/AgentPanel';
 import { LoginPage } from './components/LoginPage';
-import { createChapter, isAuthenticated, logout, saveChapter, uploadImage } from './lib/api';
+import {
+  createChapter,
+  fetchXiaohongshuStatus,
+  isAuthenticated,
+  logout,
+  publishToXiaohongshu,
+  saveChapter,
+  uploadImage,
+  type XiaohongshuPublishStatus,
+} from './lib/api';
 
 import './App.css';
 
@@ -31,11 +40,13 @@ export default function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isPublishingXhs, setIsPublishingXhs] = useState(false);
+  const [xhsStatus, setXhsStatus] = useState<XiaohongshuPublishStatus | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Data hooks
   const { books, loading: booksLoading, create: createBook, error: booksError } = useBooks();
-  const { book, loading: bookLoading } = useBook(selectedBookSlug);
+  const { book, loading: bookLoading, reload: reloadBook } = useBook(selectedBookSlug);
   const { 
     content, 
     loading: chapterLoading, 
@@ -87,11 +98,13 @@ export default function App() {
     setAuthenticated(false);
     setSelectedBookSlug(null);
     setSelectedChapterSlug(null);
+    setXhsStatus(null);
   }, []);
 
   const handleBookSelect = useCallback((slug: string) => {
     setSelectedBookSlug(slug);
     setSelectedChapterSlug(null);
+    setXhsStatus(null);
     setSidebarVisible(true);  // Auto-open sidebar when book selected
   }, []);
 
@@ -110,6 +123,7 @@ export default function App() {
     scrollPositionRef.current = 0;  // Reset scroll on chapter change
     setHasUnsavedChanges(false);  // Reset unsaved changes
     setEditedContent('');
+    setXhsStatus(null);
   }, [resetAgent]);
 
   const handleCreateChapter = useCallback(async () => {
@@ -117,25 +131,50 @@ export default function App() {
     const title = prompt('Chapter title:');
     if (title) {
       const chapter = await createChapter(selectedBookSlug, title);
+      await reloadBook();
       setSelectedChapterSlug(chapter.slug);
     }
-  }, [selectedBookSlug]);
+  }, [selectedBookSlug, reloadBook]);
 
   const handleContentChange = useCallback((newContent: string) => {
     setEditedContent(newContent);
     setHasUnsavedChanges(newContent !== content);
   }, [content]);
 
+  const loadXhsStatus = useCallback(async () => {
+    if (!selectedBookSlug || !selectedChapterSlug) {
+      setXhsStatus(null);
+      return;
+    }
+
+    try {
+      const status = await fetchXiaohongshuStatus(selectedBookSlug, selectedChapterSlug);
+      setXhsStatus(status);
+    } catch (error) {
+      console.error('Failed to load Xiaohongshu status:', error);
+      setXhsStatus(null);
+    }
+  }, [selectedBookSlug, selectedChapterSlug]);
+
   const handleSave = useCallback(async () => {
-    if (!selectedBookSlug || !selectedChapterSlug || !hasUnsavedChanges) return;
+    if (!selectedBookSlug || !selectedChapterSlug || !hasUnsavedChanges || isUploadingImage) return;
     
     setIsSaving(true);
     try {
       const result = await saveChapter(selectedBookSlug, selectedChapterSlug, editedContent);
+      const nextSlug = result.chapterSlug || selectedChapterSlug;
+      const renamed = !!result.renamed && nextSlug !== selectedChapterSlug;
       setHasUnsavedChanges(false);
+      if (renamed) {
+        setSelectedChapterSlug(nextSlug);
+      }
       
       // Show success message
-      if (result.gitCommitted) {
+      if (renamed && result.gitCommitted) {
+        setSaveMessage(`✓ Saved, renamed to ${nextSlug}, and pushed to git`);
+      } else if (renamed) {
+        setSaveMessage(`✓ Saved and renamed to ${nextSlug} (git commit failed)`);
+      } else if (result.gitCommitted) {
         setSaveMessage('✓ Saved and pushed to git');
       } else {
         setSaveMessage('✓ Saved (git commit failed)');
@@ -144,7 +183,11 @@ export default function App() {
       // Clear message after 3 seconds
       setTimeout(() => setSaveMessage(null), 3000);
       
-      await reloadChapter();  // Reload to get saved content
+      await reloadBook();
+      if (!renamed) {
+        await reloadChapter();  // Reload to get saved content
+        await loadXhsStatus();
+      }
     } catch (err) {
       console.error('Save failed:', err);
       setSaveMessage('✗ Save failed');
@@ -152,57 +195,83 @@ export default function App() {
     } finally {
       setIsSaving(false);
     }
-  }, [selectedBookSlug, selectedChapterSlug, editedContent, hasUnsavedChanges, reloadChapter]);
+  }, [selectedBookSlug, selectedChapterSlug, editedContent, hasUnsavedChanges, isUploadingImage, reloadBook, reloadChapter, loadXhsStatus]);
 
   const handleImageUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file || !selectedBookSlug) return;
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0 || !selectedBookSlug) return;
 
-    // Validate file size (5MB max)
-    if (file.size > 5 * 1024 * 1024) {
-      setSaveMessage('✗ Image too large (max 5MB)');
+    const maxImageSize = 5 * 1024 * 1024; // 5MB
+    const validFiles = files.filter((file) => file.size <= maxImageSize);
+    const skippedCount = files.length - validFiles.length;
+
+    if (validFiles.length === 0) {
+      setSaveMessage('✗ All selected images are too large (max 5MB)');
       setTimeout(() => setSaveMessage(null), 3000);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       return;
     }
 
     setIsUploadingImage(true);
     try {
-      const result = await uploadImage(selectedBookSlug, file);
-      
-      // Find the position right after the first heading (title)
-      const lines = editedContent.split('\n');
-      let insertLineIndex = 0;
-      
-      // Find first heading line (starts with #)
-      for (let i = 0; i < lines.length; i++) {
-        if (lines[i].trim().startsWith('#')) {
-          insertLineIndex = i + 1; // Insert after the title
-          break;
+      const uploadedUrls: string[] = [];
+      let failedCount = 0;
+
+      // Upload sequentially to preserve user-selected order in markdown insertion
+      for (const file of validFiles) {
+        try {
+          const result = await uploadImage(selectedBookSlug, file);
+          uploadedUrls.push(result.url);
+        } catch (error) {
+          failedCount += 1;
+          console.error(`Image upload failed for ${file.name}:`, error);
         }
       }
-      
-      // Insert image markdown right after title
-      const markdownImage = `![](${result.url})`;
-      lines.splice(insertLineIndex, 0, '', markdownImage, ''); // Add blank lines around image
-      const newContent = lines.join('\n');
-      
-      setEditedContent(newContent);
-      setHasUnsavedChanges(true);
-      
-      setSaveMessage('✓ Image inserted below title');
-      setTimeout(() => setSaveMessage(null), 3000);
-    } catch (error) {
-      console.error('Image upload failed:', error);
-      setSaveMessage('✗ Upload failed');
+
+      if (uploadedUrls.length > 0) {
+        setEditedContent((prevContent) => {
+          const lines = prevContent.split('\n');
+          let insertLineIndex = 0;
+
+          // Find first heading line (starts with #) and insert right after title
+          for (let i = 0; i < lines.length; i++) {
+            if (lines[i].trim().startsWith('#')) {
+              insertLineIndex = i + 1;
+              break;
+            }
+          }
+
+          const imageLines: string[] = [];
+          for (const url of uploadedUrls) {
+            imageLines.push('', `![](${url})`, '');
+          }
+
+          lines.splice(insertLineIndex, 0, ...imageLines);
+          return lines.join('\n');
+        });
+        setHasUnsavedChanges(true);
+      }
+
+      const successCount = uploadedUrls.length;
+      if (successCount > 0 && failedCount === 0 && skippedCount === 0) {
+        setSaveMessage(`✓ Inserted ${successCount} image${successCount > 1 ? 's' : ''}`);
+      } else if (successCount > 0) {
+        const failedTotal = failedCount + skippedCount;
+        setSaveMessage(`⚠ Inserted ${successCount}; ${failedTotal} failed/skipped`);
+      } else {
+        setSaveMessage('✗ Upload failed');
+      }
       setTimeout(() => setSaveMessage(null), 3000);
     } finally {
       setIsUploadingImage(false);
-      // Reset file input
+      // Reset file input so selecting the same files again still triggers onChange
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     }
-  }, [selectedBookSlug, editedContent]);
+  }, [selectedBookSlug]);
 
   const handleInsertImageClick = useCallback(() => {
     fileInputRef.current?.click();
@@ -237,6 +306,10 @@ export default function App() {
     }
   }, [content, hasUnsavedChanges]);
 
+  useEffect(() => {
+    loadXhsStatus();
+  }, [loadXhsStatus]);
+
   const handleSelectionChange = useCallback((from: number, to: number, text: string) => {
     if (text.length > 0) {
       setSelection({ from, to, text });
@@ -244,6 +317,42 @@ export default function App() {
       setSelection(null);
     }
   }, []);
+
+  const handlePublishToXhs = useCallback(async () => {
+    if (!selectedBookSlug || !selectedChapterSlug) return;
+    if (hasUnsavedChanges) {
+      setSaveMessage('✗ Save chapter before publishing');
+      setTimeout(() => setSaveMessage(null), 3000);
+      return;
+    }
+
+    setIsPublishingXhs(true);
+    try {
+      const result = await publishToXiaohongshu(selectedBookSlug, selectedChapterSlug);
+      setXhsStatus(result);
+
+      if (result.status === 'prepared' && result.message) {
+        setSaveMessage(result.message);
+      } else if (result.operation === 'update') {
+        setSaveMessage('✓ Xiaohongshu post updated');
+      } else if (result.operation === 'create') {
+        setSaveMessage('✓ Published to Xiaohongshu');
+      } else if (result.message) {
+        setSaveMessage(result.message);
+      } else {
+        setSaveMessage('✓ Publish completed');
+      }
+      setTimeout(() => setSaveMessage(null), 3500);
+    } catch (error) {
+      console.error('Xiaohongshu publish failed:', error);
+      const msg = error instanceof Error ? error.message : 'Publish failed';
+      setSaveMessage(`✗ ${msg}`);
+      setTimeout(() => setSaveMessage(null), 3500);
+    } finally {
+      setIsPublishingXhs(false);
+      await loadXhsStatus();
+    }
+  }, [selectedBookSlug, selectedChapterSlug, hasUnsavedChanges, loadXhsStatus]);
 
   const handleAgentSubmit = useCallback((prompt: string) => {
     if (!selection) return;
@@ -362,10 +471,10 @@ export default function App() {
                   <button 
                     className="save-fab" 
                     onClick={handleSave}
-                    disabled={isSaving}
-                    title="Save changes"
+                    disabled={isSaving || isUploadingImage}
+                    title={isUploadingImage ? 'Wait for image upload/link insertion to finish' : 'Save changes'}
                   >
-                    {isSaving ? '💾 Saving...' : '💾 Save'}
+                    {isSaving ? '💾 Saving...' : (isUploadingImage ? '🖼 Uploading...' : '💾 Save')}
                   </button>
                 )}
                 
@@ -383,6 +492,7 @@ export default function App() {
                       ref={fileInputRef}
                       type="file"
                       accept="image/*"
+                      multiple
                       onChange={handleImageUpload}
                       style={{ display: 'none' }}
                     />
@@ -390,9 +500,21 @@ export default function App() {
                       className="image-fab" 
                       onClick={handleInsertImageClick}
                       disabled={isUploadingImage}
-                      title="Insert image"
+                      title="Insert image(s)"
                     >
                       {isUploadingImage ? '⏳' : '📷'}
+                    </button>
+                    <button
+                      className="publish-fab"
+                      onClick={handlePublishToXhs}
+                      disabled={isPublishingXhs}
+                      title={hasUnsavedChanges ? 'Save chapter first' : 'Publish this chapter to Xiaohongshu'}
+                    >
+                      {isPublishingXhs
+                        ? '📮 Publishing...'
+                        : xhsStatus?.published
+                          ? (xhsStatus.needsUpdate ? '📮 Update 小红书' : '📮 Re-publish 小红书')
+                          : '📮 Publish 小红书'}
                     </button>
                   </>
                 )}
